@@ -1,2 +1,4 @@
-/df_manifestos_grouped_sentences.csv
-/manifesto_apikey.txt
+*.csv
+*.txt
+cache_files/
+.jupyter_cache/
