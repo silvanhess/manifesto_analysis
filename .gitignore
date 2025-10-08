@@ -4,3 +4,4 @@ cache_files/
 .jupyter_cache/
 *.rds
 mp_case_selection_files/
+*.html

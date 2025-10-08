@@ -6,7 +6,7 @@ library(tidyverse)
 library(countrycode)
 
 # inspect manifesto project package
-??manifestoR
+# ??manifestoR
 manifestoR::mp_setapikey("manifesto_apikey.txt")
 versions <- manifestoR::mp_coreversions()
 codebook <- manifestoR::mp_codebook()
@@ -20,9 +20,11 @@ european_manifestos <- maindataset |>
   mutate(continent = countrycode(countryname, "country.name", "continent")) |>
   filter(continent == "Europe", date > 200000)
 
-# 2. Keep only greens and populists
+# 2. Keep only greens and populists, join party information
 greens_populists <- european_manifestos |>
-  filter(parfam %in% c(10, 70))
+  filter(parfam %in% c(10, 70)) |>
+  left_join(parties, by = join_by(party == party)) |>
+  rename(countryname = countryname.x)
 
 # 3. Keep only countries that have BOTH groups
 greens_populists_filtered <- greens_populists |>
@@ -44,5 +46,15 @@ greens_populists_periods <-
       TRUE ~ NA_character_
     )
   )
-
 write_rds(greens_populists_periods, "greens_populists_periods.rds")
+
+greens_populists_wide <- greens_populists_periods |>
+  select(countryname, parfam, period) |>
+  group_by(countryname, parfam, period) |>
+  summarise(manifesto_exists = n(), .groups = "drop") |>
+  pivot_wider(
+    names_from = period,
+    values_from = manifesto_exists,
+    values_fill = NA # fill missing periods with NA
+  )
+write_rds(greens_populists_wide, "greens_populists_wide.rds")

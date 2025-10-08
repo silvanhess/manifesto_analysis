@@ -8,14 +8,20 @@ format: html
 #| warning: false
 
 library(dplyr)
+library(knitr)
 df <- readRDS("greens_populists_periods.rds")
 df |>
   group_by(countryname) |>
   summarise(number_of_manifestos = n()) |>
-  knitr::kable()
+  kable()
 
 df |>
   group_by(period) |>
   summarise(number_of_manifestos = n()) |>
-  knitr::kable()
+  kable()
+
+df <- readRDS("greens_populists_wide.rds")
+df |> 
+  kable()
+
 ```
