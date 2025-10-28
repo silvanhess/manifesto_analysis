@@ -1,19 +1,18 @@
-# manifesto project dataset creation using the R package
+# load packages ----------------------------------------------------------
 
-# load packages
 library(manifestoR)
 library(tidyverse)
 library(countrycode)
 
-# inspect manifesto project package
-# ??manifestoR
+# Manifesto Project Overview ---------------------------------------------
+
 manifestoR::mp_setapikey("manifesto_apikey.txt")
 versions <- manifestoR::mp_coreversions()
 codebook <- manifestoR::mp_codebook()
 maindataset <- manifestoR::mp_maindataset()
 parties <- manifestoR::mp_parties()
 
-# Create Dataset
+# Dataset erstellen ------------------------------------------------------
 
 # 1. Filter European manifestos after 2000
 european_manifestos <- maindataset |>
@@ -46,7 +45,7 @@ greens_populists_periods <-
       TRUE ~ NA_character_
     )
   )
-write_rds(greens_populists_periods, "greens_populists_periods.rds")
+write_rds(greens_populists_periods, "data/prepgreens_populists_periods.rds")
 
 greens_populists_wide <- greens_populists_periods |>
   select(countryname, parfam, period) |>
@@ -57,4 +56,40 @@ greens_populists_wide <- greens_populists_periods |>
     values_from = manifesto_exists,
     values_fill = NA # fill missing periods with NA
   )
-write_rds(greens_populists_wide, "greens_populists_wide.rds")
+write_rds(greens_populists_wide, "data/greens_populists_wide.rds")
+
+# Populist Parties Manifestos after 2000 ---------------------------------
+
+df_filtered <-
+  maindataset |>
+  mutate(
+    continent = countrycode(
+      countryname,
+      "country.name",
+      "continent"
+    )
+  ) |>
+  filter(
+    continent == "Europe",
+    date > 200000,
+    parfam == 10
+  ) |>
+  left_join(
+    parties,
+    by = join_by(
+      party == party
+    )
+  ) |>
+  rename(
+    countryname = countryname.x,
+    country = country.x
+  )
+
+manifesto_ids <-
+  df_filtered |>
+  select(party, date)
+
+df_corpus <- mp_corpus(manifesto_ids, as_tibble = TRUE)
+corpus <- mp_corpus(manifesto_ids)
+
+write_csv(df_corpus, file = "data_prep/df_corpus.csv")
