@@ -44,7 +44,8 @@ df_cleaned <-
   ) |>
   filter(
     continent == "Europe",
-    date > 200000
+    date > 200000,
+    parfam == 10
   ) |>
   left_join(
     parties,
@@ -65,26 +66,24 @@ if (!file.exists("data/corpus.rds")) {
   df_corpus <- mp_corpus(manifesto_ids, as_tibble = TRUE)
   saveRDS(df_corpus, "data/corpus.rds")
 }
-df_corpus <- readRDS("project_data/corpus.rds")
+df_corpus <- readRDS("data/corpus.rds")
 
 # set Parameters ---------------------------------------------------------
 
 anchors <- c("climate", "energy")
 features <- c("denial", "elitist", "cultural", "national", "sovereignty")
 
-
 # set up python ----------------------------------------------------------
 
-use_python("C:/Users/sile9/AppData/Local/Programs/Python/Python313/python.exe")
-# to do: put path in txt file
-# py_install(c("torch", "transformers", "sentence-transformers"))
+# Initialize the installed Conda environment
+text::textrpp_initialize(save_profile = TRUE)
 
 # Compute sentence embeddings --------------------------------------------
 
 # Compute embeddings
 sentence_embeddings <- textEmbed(
   df_corpus$text,
-  model = "manifesto-project/manifestoberta"
+  model = "manifesto-project/manifestoberta-xlm-roberta-56policy-topics-context-2024-1-1"
 )$text_embeds
 
 # Attach embeddings to sentences
@@ -93,24 +92,26 @@ df_corpus$embedding <- split(
   seq_len(nrow(sentence_embeddings))
 )
 
-# --- Step 3: Get anchor & feature embeddings (same model) ---
+# Get anchor and feature embeddings --------------------------------------
+
 anchor_embeds <- textEmbed(
   anchors,
-  model = "manifesto-project/manifestoberta"
+  model = "manifesto-project/manifestoberta-xlm-roberta-56policy-topics-context-2024-1-1"
 )$text_embeds
 feature_embeds <- textEmbed(
   features,
-  model = "manifesto-project/manifestoberta"
+  model = "manifesto-project/manifestoberta-xlm-roberta-56policy-topics-context-2024-1-1"
 )$text_embeds
 
-# --- Step 4: Cosine similarity function ---
+
+# cosine similarity ------------------------------------------------------
+
 get_cos <- function(x, y) {
   sum(x * y) / (sqrt(sum(x^2)) * sqrt(sum(y^2)))
 }
 
-# --- Step 5: Compute similarity of each sentence to anchors & features ---
-sentences_df <- sentences_df %>%
-  rowwise() %>%
+sentences_df <- sentences_df |>
+  rowwise() |>
   mutate(
     anchor_sim = mean(sapply(1:nrow(anchor_embeds), function(i) {
       get_cos(unlist(embedding), anchor_embeds[i, ])
@@ -120,7 +121,8 @@ sentences_df <- sentences_df %>%
     }))
   )
 
-# --- Step 6: Aggregate results by party ---
+# Aggregate Results ------------------------------------------------------
+
 party_results <- sentences_df %>%
   group_by(party) %>%
   summarize(
@@ -129,7 +131,9 @@ party_results <- sentences_df %>%
     .groups = "drop"
   )
 
-# --- Step 7: Visualization ---
+
+# Visualization ----------------------------------------------------------
+
 ggplot(
   party_results,
   aes(x = mean_anchor_sim, y = mean_feature_sim, label = party)
@@ -144,7 +148,6 @@ ggplot(
     y = "Similarity to Features (denial, elitist, cultural, national, sovereignty)"
   )
 
-# --- Optional: Inspect sentences most semantically tied to climate/energy ---
 top_sentences <- sentences_df %>%
   arrange(desc(anchor_sim)) %>%
   slice_head(n = 10) %>%
