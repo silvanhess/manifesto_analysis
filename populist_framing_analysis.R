@@ -75,8 +75,17 @@ features <- c("denial", "elitist", "cultural", "national", "sovereignty")
 
 # set up python ----------------------------------------------------------
 
+# Install text-required Python packages in a Conda environment
+text::textrpp_install() # ----> this fails
+
+# Show available Conda environments
+reticulate::conda_list()
+
 # Initialize the installed Conda environment
 text::textrpp_initialize(save_profile = TRUE)
+
+# Test that textEmbed works
+textEmbed("hello")
 
 # Compute sentence embeddings --------------------------------------------
 
