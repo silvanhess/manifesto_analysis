@@ -5,5 +5,3 @@ cache_files/
 *.rds
 *.html
 arc/
-create_condaenv.R
-download_manifestoberta.py
