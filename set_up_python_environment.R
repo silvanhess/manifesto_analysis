@@ -54,3 +54,10 @@ test_embedding <- textEmbed(
   "hello",
   model = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 ) # this works
+
+
+# Check GPUs -------------------------------------------------------------
+
+library(torch)
+install_torch()
+cuda_is_available()

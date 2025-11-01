@@ -112,6 +112,9 @@ df_corpus_main_categories <- df_corpus |>
 
 df_corpus_climate_energy <- df_corpus |>
   filter(str_detect(text_translated, "climate|energy"))
+# just for info for around how many windows i get later
+# because i construct the windows in a different way later
+# this number may vary +/- 20 %
 
 df_corpus_glued_sentences <- df_corpus |>
   group_by(manifesto_id, party, date, language) |>
@@ -144,7 +147,7 @@ anchors <- c("climate", "energy")
 toks_cont <- tokens_context(
   the_toks,
   pattern = anchors,
-  window = 24L,
+  window = 6L, # adjust for Performance from 6 to 24
   case_insensitive = T
 ) #create tokens context
 
@@ -161,24 +164,22 @@ df <- tibble(
 
 # Compute embeddings --------------------------------------------
 
-word_embeddings <- textEmbed(
-  df$text,
-  model = "all-MiniLM-L6-v2"
-)
+# df$text <- textClean(df$text, lower = TRUE, remove_non_ascii = TRUE)
 
-embedding_matrix <- as.matrix(embeddings$texts$texts)
-rownames(embedding_matrix) <- df$doc_id
+if (!file.exists("data/word_embeddings.rds")) {
+  word_embeddings <- textEmbed(
+    df$text,
+    model = "sentence-transformers/all-MiniLM-L6-v2"
+  )
+  saveRDS(word_embeddings, "data/word_embeddings.rds")
+} else {
+  word_embeddings <- readRDS("data/word_embeddings.rds")
+}
 
+# embedding_matrix <- as.matrix(word_embeddings$texts$texts)
+# rownames(embedding_matrix) <- df$doc_id
 
-# Get anchor embedding ---------------------------------------------------
-
-# Suppose you have your document texts in df$text
-embeddings <- textEmbed(
-  text = df$text,
-  model = "all-MiniLM-L6-v2"
-)
-
-embedding_matrix <- as.matrix(embeddings$texts$texts)
+embedding_matrix <- as.matrix(word_embeddings$texts$texts)
 
 # Compute mean embedding across all documents (global anchor)
 mean_anchor_embedding <- colMeans(embedding_matrix)
@@ -190,8 +191,9 @@ features <- c("denial", "elitist", "cultural", "national", "sovereignty")
 
 feature_embeddings <- textEmbed(
   text = features,
-  model = "all-MiniLM-L6-v2"
+  model = "sentence-transformers/all-MiniLM-L6-v2"
 )
+
 
 feature_matrix <- as.matrix(feature_embeddings$texts$texts)
 rownames(feature_matrix) <- features
