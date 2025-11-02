@@ -5,3 +5,4 @@ cache_files/
 *.rds
 *.html
 arc/
+data/
