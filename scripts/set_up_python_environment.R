@@ -1,6 +1,6 @@
 reticulate::install_miniconda()
-python_path <- readLines("python_path.txt")
-reticulate::use_python(python_path)
+# python_path <- readLines("python_path.txt")
+# reticulate::use_python(python_path)
 reticulate::conda_create("textrpp_reticulate", packages = "python=3.9")
 rpp_packages <- c(
   "torch==2.2.0",
@@ -42,6 +42,12 @@ reticulate::conda_list()
 
 # Initialize the installed Conda environment
 text::textrpp_initialize(condaenv = "textrpp_reticulate", save_profile = TRUE)
+
+find_textrpp_env() # should return TRUE
+
+# tell R which python to use (for interpreter session)
+reticulate::use_condaenv("textrpp_reticulate", required = TRUE)
+reticulate::py_config() # shows Path of r-miniconda envs
 
 # Test that textEmbed works
 test_embedding <- textEmbed(

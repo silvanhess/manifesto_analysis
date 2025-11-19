@@ -1,0 +1,6 @@
+library(manifestoR)
+mp_setapikey("manifesto_apikey.txt")
+mp_which_corpus_version()
+mp_which_dataset_versions()
+corpus_citation <- mp_cite(corpus_version = "2025-1")
+print(citation$citation)
