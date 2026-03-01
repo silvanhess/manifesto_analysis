@@ -1,0 +1,38 @@
+---
+title: "Untitled"
+format: html
+---
+
+# Setup
+
+```{r}
+library(tidyverse)
+library(here)
+```
+
+# Load Data
+
+```{r}
+policlim_raw <- read_csv(here("data/raw/policlim_full_qs_2025-17-06.csv"))
+```
+
+# Data Preparation
+
+```{r}
+policlim_prepared <- policlim_raw |> 
+    filter(climate == 1, ) |> 
+    select(qs_id, original_text)
+```
+
+# Summary Statistics
+
+```{r}
+summary(policlim_prepared)
+glimpse(policlim_prepared)
+```
+
+# Data Export
+
+```{r}
+write_csv(policlim_prepared, here("data/prep/policlim_climate_for_topic_modeling.csv"))
+```

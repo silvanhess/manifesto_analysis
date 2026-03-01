@@ -1,0 +1,288 @@
+---
+title: "Untitled"
+format: html
+---
+
+---
+title: Topic Modeling
+jupyter: bertopic_env
+format: html
+execute:
+  warning: false
+---
+
+
+# Python: BERTopic Modeling
+
+This section performs topic modeling on climate-related transcripts using BERTopic with multilingual embeddings and multiple representation models.
+
+## Setup
+
+Import all necessary Python libraries for topic modeling.
+
+```{python}
+import pandas as pd
+from bertopic import BERTopic
+from sentence_transformers import SentenceTransformer
+from umap import UMAP
+import hdbscan
+from sklearn.feature_extraction.text import CountVectorizer
+from bertopic.representation import KeyBERTInspired, MaximalMarginalRelevance, OpenAI
+from nltk.corpus import stopwords
+import nltk
+from pathlib import Path
+import pickle
+import os
+from dotenv import load_dotenv
+from openai import OpenAI as OpenAIClient
+
+load_dotenv()
+```
+
+Configure project paths. Adjust based on notebook location.
+
+```{python}
+project_root = Path.cwd().parent if "Scripts" in Path.cwd().parts else Path.cwd()
+print(f"Project root: {project_root}")
+
+data_dir = project_root / 'Data'
+output_dir = project_root / 'Outputs'
+
+data_dir.mkdir(parents=True, exist_ok=True)
+output_dir.mkdir(parents=True, exist_ok=True)
+
+print(f"Data directory: {data_dir}")
+print(f"Output directory: {output_dir}")
+```
+
+## Load Documents
+
+Read the preprocessed transcripts.
+
+```{python}
+df = pd.read_csv(data_dir / '05_transcripts_climate_for_topic_modeling.csv')
+text_column = 'transcript_text'
+documents = df[text_column].tolist()
+
+print(f"Loaded {len(documents)} documents")
+print(f"First document preview: {documents[0][:200]}...")
+```
+
+## Generate Embeddings
+
+Create dense vector representations using a multilingual sentence transformer. Cache embeddings to disk for faster re-runs.
+
+```{python}
+print("Calculating or loading embeddings...")
+embedding_model = SentenceTransformer("paraphrase-multilingual-mpnet-base-v2")
+
+emb_path = data_dir / '06_embeddings.pickle'
+if emb_path.exists():
+    print("Loading existing embeddings from disk...")
+    with emb_path.open('rb') as handle:
+        embeddings = pickle.load(handle)
+else:
+    print("Computing embeddings (this may take a few minutes)...")
+    embeddings = embedding_model.encode(documents, show_progress_bar=True)
+    emb_path.parent.mkdir(parents=True, exist_ok=True)
+    with emb_path.open('wb') as handle:
+        pickle.dump(embeddings, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    print("Embeddings saved to disk.")
+
+print(f"Embeddings shape: {embeddings.shape}")
+```
+
+## Reduce Embeddings (2D)
+
+Reduce embeddings to 2D for visualization using UMAP.
+
+```{python}
+print("Reducing embeddings for visualization...")
+reduced_embeddings = UMAP(
+    n_neighbors=15,
+    n_components=2,
+    min_dist=0.0,
+    metric='cosine',
+    random_state=42
+).fit_transform(embeddings)
+
+print(f"Reduced embeddings shape: {reduced_embeddings.shape}")
+```
+
+## Configure Models
+
+Set up UMAP (5D for clustering), HDBSCAN for clustering, and CountVectorizer with stopwords for topic representation.
+
+```{python}
+# UMAP: Reduce to 5D for topic modeling
+umap_model = UMAP(
+    n_neighbors=15,
+    n_components=5,
+    min_dist=0.0,
+    metric='cosine',
+    random_state=42
+)
+
+# HDBSCAN: Cluster documents into topics
+hdbscan_model = hdbscan.HDBSCAN(
+    min_cluster_size=30,
+    # min_samples=15,
+    cluster_selection_epsilon=0.0,
+    # max_cluster_size=500,
+    metric='euclidean',
+    cluster_selection_method='eom',
+    prediction_data=True
+)
+
+# Stopwords
+nltk.download('stopwords', quiet=True)
+german_stopwords = set(stopwords.words('german'))
+french_stopwords = set(stopwords.words('french'))
+swiss_german_stopwords = {'dass'}
+all_stopwords = german_stopwords.union(french_stopwords).union(swiss_german_stopwords)
+
+# CountVectorizer: Extract topic keywords
+vectorizer_model = CountVectorizer(
+    min_df=2,
+    max_df=0.85,
+    ngram_range=(1, 2),
+    stop_words=list(all_stopwords)
+)
+
+print(f"Total stopwords: {len(all_stopwords)}")
+```
+
+## Configure Representation Models
+
+Set up KeyBERT and MMR for keyword extraction. OpenAI integration is commented out but available for generating human-readable labels.
+
+```{python}
+# KeyBERT and MMR representation models
+keybert = KeyBERTInspired()
+mmr = MaximalMarginalRelevance(diversity=0.3)
+
+# OpenAI representation model
+print("Setting up OpenAI representation model...")
+openai_api_key = os.getenv("OPENAI_API_KEY")
+
+# Add this before creating the OpenAI client
+# only for rendering quarto
+if "SSL_CERT_FILE" in os.environ:
+    print(f"SSL_CERT_FILE: {os.environ['SSL_CERT_FILE']}")
+    # Remove it if it's causing issues
+    del os.environ["SSL_CERT_FILE"]
+if "SSL_CERT_DIR" in os.environ:
+    print(f"SSL_CERT_DIR: {os.environ['SSL_CERT_DIR']}")
+    del os.environ["SSL_CERT_DIR"]
+
+# Create OpenAI client
+client = OpenAIClient(api_key=openai_api_key)
+
+# Prompt for OpenAI to generate topic labels
+openai_prompt = """
+I have a topic described by the following keywords: [KEYWORDS]
+
+The topic contains these representative documents:
+[DOCUMENTS]
+
+Based on the keywords and documents above, generate a short, descriptive label for this topic in English (maximum 5 words). Only return the label itself in English, nothing else.
+"""
+
+openai_model = OpenAI(
+    client=client,
+    model="gpt-4o-mini",  # Cost-effective model
+    prompt=openai_prompt,
+    chat=True,
+    nr_docs=5,  # Number of representative documents to include
+    doc_length=200,  # Maximum words per document
+    tokenizer="whitespace"  # Required: method to tokenize documents
+)
+
+representation_model = {
+    "KeyBERT": keybert,
+    "MMR": mmr,
+    "OpenAI": openai_model,
+}
+
+print("Representation models configured.")
+```
+
+## Fit BERTopic Model
+
+Train the topic model on the climate transcripts.
+
+```{python}
+print("Fitting BERTopic model...")
+topic_model = BERTopic(
+    embedding_model=embedding_model,
+    umap_model=umap_model,
+    hdbscan_model=hdbscan_model,
+    vectorizer_model=vectorizer_model,
+    representation_model=representation_model,
+    nr_topics="auto",
+    top_n_words=10,
+    verbose=True
+)
+
+topics, probs = topic_model.fit_transform(documents, embeddings)
+
+print("\nModel fitting complete!")
+```
+
+## Extract and Save Results
+
+Add topic assignments to the dataframe and export results.
+
+```{python}
+df['topic'] = topics
+df['topic_probability'] = probs
+
+print(f"\nNumber of topics found: {len(set(topics)) - 1}")  # -1 for outliers
+print("\nTopic distribution:")
+print(df['topic'].value_counts())
+
+topic_info = topic_model.get_topic_info()
+topic_info_excl_outlier = topic_info[topic_info['Topic'] != -1]
+print("\nTopic Information:")
+print(topic_info_excl_outlier)
+
+# Save results
+df.to_csv(data_dir / '06_documents_with_topics.csv', index=False)
+topic_info.to_csv(data_dir / '06_topic_info.csv', index=False)
+```
+
+## Create Visualizations
+
+Generate interactive HTML visualizations of topics and documents.
+
+```{python}
+print("\nCreating visualizations...")
+
+# Document visualization
+fig_docs = topic_model.visualize_documents(
+    documents,
+    reduced_embeddings=reduced_embeddings,
+    hide_document_hover=False,
+    hide_annotations=False
+)
+fig_docs.write_html(output_dir / "06_topic_documents_visualization.html")
+print("  ✓ Document visualization saved")
+
+# Intertopic distance map
+fig_topics = topic_model.visualize_topics()
+fig_topics.write_html(output_dir / "06_intertopic_distance_map.html")
+print("  ✓ Intertopic distance map saved")
+
+# Topic hierarchy
+fig_hierarchy = topic_model.visualize_hierarchy()
+fig_hierarchy.write_html(output_dir / "06_topic_hierarchy.html")
+print("  ✓ Topic hierarchy saved")
+
+# Topic barchart
+fig_barchart = topic_model.visualize_barchart(top_n_topics=10)
+fig_barchart.write_html(output_dir / "06_topic_barchart.html")
+print("  ✓ Topic barchart saved")
+
+print(f"\nProcessing complete! Check the {output_dir} folder for visualizations.")
+```
+
